@@ -54,6 +54,28 @@ class Film(db.Model):
 def home():
     return "<h1>It Works!</h1>"
 
+@app.route("/topfiveactors")
+def topfiveactors():
+    query = text("""
+        SELECT A.actor_id, CONCAT(A.first_name, " ", A.last_name) as 'actor_name', COUNT(FA.film_id) as 'film_count'
+        FROM actor AS A
+        INNER JOIN film_actor AS FA
+            ON FA.actor_id = A.actor_id
+        GROUP BY A.actor_id
+        ORDER BY film_count DESC
+        LIMIT 5;         
+    """)
+    result = db.session.execute(query)
+    json = {'actors': []}
+    for row in result:
+        json['actors'].append({
+            'actor_id': row.actor_id,
+            'actor_name': row.actor_name,
+            'film_count': row.film_count,
+        })
+    return json
+        
+
 @app.route("/filmdetails", methods=['GET', 'POST'])
 def filmdetails():
     if(request.args.get('film_id') == None): return Response(status=400)
