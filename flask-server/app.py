@@ -76,29 +76,63 @@ def topfiveactors():
     return json
         
 
+@app.route("/actordetails", methods=['GET', 'POST'])
+def actordetails():
+    if(request.args.get('actor_id') == None): return Response(status=400)
+    query = text(f"""
+        SELECT I.film_id, F.title, COUNT(I.film_id) AS 'rental_count'
+        FROM `rental` AS R
+        INNER JOIN `inventory` AS I
+            ON I.inventory_id = R.inventory_id
+        INNER JOIN `film` AS F
+            ON F.film_id = I.film_id
+        INNER JOIN `film_actor` AS FA
+            ON FA.film_id = I.film_id
+        WHERE FA.actor_id = {request.args['actor_id']}
+        GROUP BY I.film_id
+        ORDER BY rental_count DESC
+        LIMIT 5;             
+    """)
+    result = db.session.execute(query)
+    #row = result.first()
+    json = {
+        'films':[]
+    }
+    for row in result:
+        json['films'].append({
+            'film_id': row.film_id,
+            'title': row.title,
+            'rental_count': row.rental_count,
+        })
+    return json
+
 @app.route("/filmdetails", methods=['GET', 'POST'])
 def filmdetails():
     if(request.args.get('film_id') == None): return Response(status=400)
     query = text(f"""
-        SELECT * FROM film WHERE film_id = {request.args['film_id']};
+        SELECT F.film_id, F.title, F.description, F.release_year, F.rental_duration, F.rental_rate, F.length, F.replacement_cost, F.rating, F.special_features, C.name AS genre, FC.category_id
+        FROM `film` AS F
+        INNER JOIN `film_category` AS FC
+            ON F.film_id = FC.film_id
+        INNER JOIN `category` AS C
+            ON C.category_id = FC.category_id
+        WHERE F.film_id = {request.args['film_id']};
     """)
     result = db.session.execute(query)
     row = result.first()
     #print(result)
     json = {
         'film_id': row.film_id,
-            'title': row.title,
-            'description': row.description,
-            'release_year': row.release_year,
-            'language_id': row.language_id,
-            'original_language_id': row.original_language_id,
-            'rental_duration': row.rental_duration,
-            'rental_rate': row.rental_rate,
-            'length': row.length,
-            'replacement_cost': row.replacement_cost,
-            'rating': row.rating,
-            'special_features': row.special_features,
-            'last_update': row.last_update
+        'title': row.title,
+        'description': row.description,
+        'release_year': row.release_year,
+        'rental_duration': row.rental_duration,
+        'rental_rate': row.rental_rate,
+        'length': row.length,
+        'replacement_cost': row.replacement_cost,
+        'rating': row.rating,
+        'special_features': row.special_features,
+        'genre': row.genre,
     }
     return json
 
@@ -111,8 +145,6 @@ def topfivefilms():
             ON I.inventory_id = R.inventory_id
         INNER JOIN `film` AS F
             ON F.film_id = I.film_id
-        INNER JOIN `film_actor` AS FA
-            ON FA.film_id = I.film_id
         GROUP BY I.film_id
         ORDER BY rental_count DESC
         LIMIT 5;
