@@ -9,47 +9,6 @@ app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///sakila.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db = SQLAlchemy(app)
 
-class Rental(db.Model):
-    __tablename__ = "rental"
-    rental_id = db.Column(db.INTEGER, primary_key=True)
-    rental_date = db.Column(db.DATETIME)
-    inventory_id = db.Column(db.Integer, db.ForeignKey("inventory.inventory_id"))
-    customer_id = db.Column(db.SMALLINT)
-    return_date = db.Column(db.DATETIME)
-    staff_id = db.Column(db.Integer)
-
-class FilmActor(db.Model):
-    __tablename__ = "film_actor"
-    actor_id = db.Column(db.SMALLINT, primary_key = True)
-    film_id = db.Column(db.SMALLINT, db.ForeignKey("film.film_id"), primary_key = True)
-    last_update = db.Column(db.TIMESTAMP)
-
-class Inventory(db.Model):
-    __tablename__ = "inventory"
-    inventory_id = db.Column(db.Integer, primary_key = True)
-    film_id = db.Column(db.SMALLINT, db.ForeignKey("film.film_id"))
-    store_id = db.Column(db.Integer)
-    last_update = db.Column(db.TIMESTAMP)
-
-class Film(db.Model):
-    __tablename__ = "film"
-    film_id = db.Column(db.SMALLINT, primary_key=True)
-    title = db.Column(db.VARCHAR(128))
-    description = db.Column(db.TEXT())
-    release_year = db.Column(db.Date())
-    language_id = db.Column(db.SMALLINT())
-    original_language_id = db.Column(db.SMALLINT())
-    rental_duration = db.Column(db.SMALLINT())
-    rental_rate = db.Column(db.DECIMAL(4,2))
-    length = db.Column(db.SMALLINT())
-    replacement_cost = db.Column(db.DECIMAL(5,2))
-    rating = db.Column(db.Enum('G', 'PG', 'PG-13', 'R', 'NC-17'))
-    special_features = db.Column(mysql.SET('Trailers', 'Commentaries', 'Deleted Scenes', 'Behind the Scenes'))
-    last_update = db.Column(db.TIMESTAMP())
-    
-    def __repr__(self):
-        return f'<Film {self.film_id}, {self.title}>'
-
 @app.route("/")
 def home():
     return "<h1>It Works!</h1>"
@@ -75,6 +34,34 @@ def topfiveactors():
         })
     return json
         
+@app.route("/search", methods=['GET', 'POST'])
+def search():
+    json = {'result_count': 0, 'films':[]}
+    if(request.args.get('search') == None or request.args.get('search') == ''): return json
+    query = text(f"""
+        SELECT F.film_id, F.title, group_concat(concat(A.first_name,' ',A.last_name)) AS actor_names, C.name
+        FROM film AS F
+        INNER JOIN film_actor AS FA ON F.film_id = FA.film_id
+        INNER JOIN actor as A ON A.actor_id = FA.actor_id
+        INNER JOIN film_category AS FC ON FC.film_id = F.film_id
+        INNER JOIN category AS C ON C.category_id = FC.category_id
+        GROUP BY F.film_id
+        HAVING F.title LIKE '%{request.args['search']}%'
+            OR actor_names LIKE '%{request.args['search']}%'
+            OR C.name LIKE '%{request.args['search']}%'
+    """)
+    #VULNERABLE TO THE SEARCH QUERY [' OR 1=1 OR 1 LIKE ']
+    print(query)
+    result = db.session.execute(query)
+    for row in result:
+        json['result_count'] += 1
+        json['films'].append({
+            'film_id': row.film_id,
+            'title': row.title,
+            'actor_names': row.actor_names,
+            'category_name': row.name,
+        })
+    return json
 
 @app.route("/actordetails", methods=['GET', 'POST'])
 def actordetails():
