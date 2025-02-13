@@ -16,7 +16,7 @@ def home():
 @app.route("/topfiveactors")
 def topfiveactors():
     query = text("""
-        SELECT A.actor_id, CONCAT(A.first_name, " ", A.last_name) as 'actor_name', COUNT(FA.film_id) as 'film_count'
+        SELECT A.actor_id, (A.first_name || " " || A.last_name) as 'actor_name', COUNT(FA.film_id) as 'film_count'
         FROM actor AS A
         INNER JOIN film_actor AS FA
             ON FA.actor_id = A.actor_id
@@ -38,33 +38,24 @@ def topfiveactors():
 def search():
     json = {'result_count': 0, 'films':[]}
     if(request.args.get('search') == None or request.args.get('search') == ''): return json
-    #query = text(f"""
-    #    SELECT F.film_id, F.title, group_concat(concat(A.first_name,' ',A.last_name)) AS actor_names, C.name
-    #    FROM film AS F
-    #    INNER JOIN film_actor AS FA ON F.film_id = FA.film_id
-    #    INNER JOIN actor as A ON A.actor_id = FA.actor_id
-    #    INNER JOIN film_category AS FC ON FC.film_id = F.film_id
-    #    INNER JOIN category AS C ON C.category_id = FC.category_id
-    #    GROUP BY F.film_id
-    #    HAVING F.title LIKE '%{request.args['search']}%'
-    #        OR actor_names LIKE '%{request.args['search']}%'
-    #        OR C.name LIKE '%{request.args['search']}%'
-    #""")
-    query = text('''
-        SELECT F.film_id, F.title, group_concat(concat(A.first_name,' ',A.last_name)) AS actor_names, C.name
+    query = text("""
+        SELECT F.film_id, F.title, group_concat((A.first_name || ' ' || A.last_name)) AS actor_names, C.name
         FROM film AS F
         INNER JOIN film_actor AS FA ON F.film_id = FA.film_id
         INNER JOIN actor as A ON A.actor_id = FA.actor_id
         INNER JOIN film_category AS FC ON FC.film_id = F.film_id
         INNER JOIN category AS C ON C.category_id = FC.category_id
         GROUP BY F.film_id
-        HAVING F.title LIKE '%%s%'
-            OR actor_names LIKE '%%s%'
-            OR C.name LIKE '%%s%'
-    ''')
-    #VULNERABLE TO THE SEARCH QUERY [' OR 1=1 OR 1 LIKE ']
+        HAVING F.title LIKE :title
+            OR actor_names LIKE :actors
+            OR C.name LIKE :name
+    """)
     print(query)
-    result = db.session.execute(query, {request.args['search'], request.args['search'], request.args['search']})
+    result = db.session.execute(query, {
+        'title':'%' + request.args['search'] + '%',
+        'actors':'%' + request.args['search'] + '%',
+        'name':'%' + request.args['search'] + '%',
+        })
     for row in result:
         json['result_count'] += 1
         json['films'].append({
