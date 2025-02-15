@@ -13,6 +13,29 @@ db = SQLAlchemy(app)
 def home():
     return "<h1>It Works!</h1>"
 
+@app.route("/customerlist")
+def customerlist():
+    query = text("""
+        SELECT CL.ID, CL.name, CL.address, CL.zip_code, CL.phone, CL.city, CL.country, CL.notes, CL.SID, C.email
+        FROM customer_list AS CL
+        INNER JOIN customer AS C ON C.customer_id = CL.ID
+    """)
+    result = db.session.execute(query)
+    json = {'customers':[]}
+    for row in result:
+        json['customers'].append({
+            'name': row.name,
+            'customer_id': row.ID,
+            'address': row.address,
+            'zip_code': row.zip_code,
+            'city': row.city,
+            'phone': row.phone,
+            'country': row.country,
+            'store_id': row.SID,
+            'email': row.email,
+        })
+    return json
+
 @app.route("/topfiveactors")
 def topfiveactors():
     query = text("""
