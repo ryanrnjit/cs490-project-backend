@@ -27,7 +27,7 @@ def customerlist():
             'name': row.name,
             'customer_id': row.ID,
             'address': row.address,
-            'zip_code': row.zip_code,
+            'zip_code': str(row.zip_code).zfill(5),
             'city': row.city,
             'phone': row.phone,
             'country': row.country,
@@ -73,7 +73,7 @@ def search():
             OR actor_names LIKE :actors
             OR C.name LIKE :name
     """)
-    print(query)
+    #print(query)
     result = db.session.execute(query, {
         'title':'%' + request.args['search'] + '%',
         'actors':'%' + request.args['search'] + '%',
