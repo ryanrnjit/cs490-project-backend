@@ -56,8 +56,73 @@ def topfiveactors():
             'film_count': row.film_count,
         })
     return json
+
+@app.route("/instock", methods=['GET'])
+def instock():
+    if(request.args.get('film_id') == None): return Response(status=400)
+    query = text("SELECT inventory_id, film_id FROM inventory WHERE inventory_id NOT IN ( SELECT inventory_id FROM rental WHERE return_date IS NULL ) AND film_id = :fid")
+    result = db.session.execute(query, {'fid': request.args.get('film_id')})
+    json = {
+        'count': 0,
+        'in_stock': []
+        }
+    for row in result:
+        json['count'] += 1
+        json['in_stock'].append({'inventory_id': row.inventory_id})
+    return json
+
+@app.route("/rentfilm", methods=['POST'])
+def rentfilm():
+    if(request.json == None):
+        return Response(status=400) #bad request
+    json = request.json
+    inventory_id = json.get('inventory_id')
+    customer_id = json.get('customer_id')
+    staff_id = json.get('staff_id')
+    if(inventory_id == None or customer_id == None or staff_id == None):
+        return Response(status=400) #bad request
+    
+    #input validation
+    result = db.session.execute(text("SELECT customer_id FROM customer WHERE customer_id == :cid"), {'cid': customer_id})
+    if(result.first() == None): return {'message': 'Invalid Customer ID'}, 400
+    result = db.session.execute(text("SELECT staff_id FROM staff WHERE staff_id == :sid"), {'sid': staff_id})
+    if(result.first() == None): return {'message': 'Invalid Staff ID'}, 400
+    
+    query1 = text("""
+    INSERT INTO rental (rental_id, rental_date, inventory_id, customer_id, return_date, staff_id, last_update)
+    VALUES ( 
+        (SELECT MAX(rental_id) FROM rental) + 1,
+        CURRENT_DATE,
+        :iid,
+        :cid,
+        NULL,
+        :sid,
+        CURRENT_TIMESTAMP 
+    )
+    """)
+    query2 = text("""   
+    INSERT INTO payment (payment_id, customer_id, staff_id, rental_id, amount, payment_date, last_update)
+    VALUES (
+        (SELECT MAX(payment_id) FROM payment) + 1,
+        :cid,
+        :sid,
+        (SELECT MAX(rental_id) FROM rental),
+        (SELECT rental_rate FROM film WHERE film_id = (SELECT film_id FROM inventory WHERE inventory_id = :iid)),
+        CURRENT_TIMESTAMP,
+        CURRENT_TIMESTAMP
+    )
+                  """)
+    try:
+        db.session.execute(query1, {'cid': customer_id, 'sid': staff_id, 'iid': inventory_id})
+        db.session.execute(query2, {'cid': customer_id, 'sid': staff_id, 'iid': inventory_id})
+        db.session.commit()
+    except:
+        return Response(status=500)
+    finally:
+        return {'message': 'Inventory ID ' + str(inventory_id) + ' successfully rented to Customer ID ' + str(customer_id)}
         
-@app.route("/search", methods=['GET', 'POST'])
+
+@app.route("/search", methods=['GET'])
 def search():
     json = {'result_count': 0, 'films':[]}
     if(request.args.get('search') == None or request.args.get('search') == ''): return json
@@ -89,7 +154,7 @@ def search():
         })
     return json
 
-@app.route("/actordetails", methods=['GET', 'POST'])
+@app.route("/actordetails", methods=['GET'])
 def actordetails():
     if(request.args.get('actor_id') == None): return Response(status=400)
     query = text(f"""
@@ -119,7 +184,7 @@ def actordetails():
         })
     return json
 
-@app.route("/filmdetails", methods=['GET', 'POST'])
+@app.route("/filmdetails", methods=['GET'])
 def filmdetails():
     if(request.args.get('film_id') == None): return Response(status=400)
     query = text(f"""
