@@ -15,12 +15,25 @@ def home():
 
 @app.route("/customerlist")
 def customerlist():
-    query = text("""
+    query_text = """
         SELECT CL.ID, CL.name, CL.address, CL.zip_code, CL.phone, CL.city, CL.country, CL.notes, CL.SID, C.email
         FROM customer_list AS CL
         INNER JOIN customer AS C ON C.customer_id = CL.ID
-    """)
-    result = db.session.execute(query)
+    """
+    search_addition = ""
+    search_term = request.args.get('search_term')
+    if(request.args.get('search_type') == '1'): #id
+        search_addition = "WHERE CL.ID = :search_term"
+    elif(request.args.get('search_type') == '2'): #first name
+        search_term = "%" + search_term + "%"
+        search_addition = "WHERE C.first_name LIKE :search_term"
+    elif(request.args.get('search_type') == '3'): #last name
+        search_term = "%" + search_term + "%"
+        search_addition = "WHERE C.last_name LIKE :search_term"
+    query = text(query_text + search_addition)
+    result = db.session.execute(query, {'search_term': search_term})
+    print(query)
+    print(search_term)
     json = {'customers':[]}
     for row in result:
         json['customers'].append({
@@ -307,6 +320,9 @@ def rentfilm():
     finally:
         return {'message': 'Inventory ID ' + str(inventory_id) + ' successfully rented to Customer ID ' + str(customer_id)}
         
+#@app.route("/searchcustomer/<string:first_name>/<string:last_name>/<int:customer_id>")
+#def searchcustomer(first_name, last_name, customer_id):
+    
 
 @app.route("/search", methods=['GET'])
 def search():
