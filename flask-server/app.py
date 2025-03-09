@@ -71,6 +71,191 @@ def instock():
         json['in_stock'].append({'inventory_id': row.inventory_id})
     return json
 
+@app.route("/countries")
+def countries():
+    query = text("SELECT * FROM country")
+    result = db.session.execute(query)
+    json = {
+        'countries': []
+    }
+    for row in result:
+        json['countries'].append({
+            'id': row.country_id,
+            'country': row.country
+        })
+    return json
+
+@app.route("/deletecustomer/<int:customer_id>", methods=['DELETE'])
+def deletecustomer(customer_id):
+    if(customer_id == None):
+        return {'message': 'Customer ID not provided'}, 400
+    try:
+        db.session.execute(text("DELETE FROM customer WHERE customer_id = :cid"), {'cid': customer_id})
+    except Exception as e:
+        print(e)
+        return {'message': 'Server error.'}, 500
+    else:
+        db.session.commit()
+        return {'message': f"User successfully deleted (id: {customer_id})"}
+
+@app.route("/getcustomer/<int:customer_id>", methods=['GET'])
+def getcustomer(customer_id):
+    query = text("""
+        SELECT C.customer_id, C.first_name, C.last_name, C.email, C.address_id, A.address, A.address2, A.district, A.city_id, A.postal_code, A.phone, CI.city, CI.country_id, C.create_date, C.last_update
+        FROM customer AS C
+        INNER JOIN address AS A ON C.address_id = A.address_id
+        INNER JOIN city AS CI ON A.city_id = CI.city_id
+        WHERE C.customer_id = :cid
+    """)
+    result = db.session.execute(query, {'cid': customer_id})
+    row = result.first()
+    return {
+        'customer_id': row.customer_id,
+        'first_name': row.first_name,
+        'last_name': row.last_name,
+        'email': row.email,
+        'address_id': row.address_id,
+        'address': row.address,
+        'address2': row.address2,
+        'district': row.district,
+        'city_id': row.city_id,
+        'city': row.city,
+        'postal_code': row.postal_code,
+        'phone': row.phone,
+        'country_id': row.country_id,
+        'create_date': row.create_date,
+        'last_update': row.last_update
+    }
+        
+    
+
+@app.route("/editcustomer", methods=['PATCH'])
+def editcustomer():
+    if(request.json == None):
+        return 400
+    json = request.json
+    country_id = json.get('country_id')
+    city = json.get('city')
+    address = json.get('address')
+    address2 = json.get('address2')
+    district = json.get('district')
+    postal_code = json.get('postal_code')
+    phone = json.get('phone')
+    first_name = json.get('first_name').upper()
+    last_name = json.get('last_name').upper()
+    email = json.get('email')
+    customer_id = json.get('customer_id')
+    city_id = json.get('city_id')
+    address_id = json.get('address_id')
+    if(country_id == None or city == None or address == None or postal_code == None or first_name == None or last_name == None or email == None):
+        return {'message': 'Required inputs were not provided.'}, 400
+    query_city = text("""
+        UPDATE city SET
+            city = :city,
+            country_id = :country_id,
+            last_update = CURRENT_TIMESTAMP
+            WHERE city_id = :city_id
+    """)
+    query_address = text("""
+        UPDATE address SET
+            address = :address,
+            address2 = :address2,
+            district = :district,
+            postal_code = :zipcode,
+            phone = :phone,
+            last_update = CURRENT_TIMESTAMP
+        WHERE address_id = :address_id
+    """)
+    query_customer = text("""
+        UPDATE customer SET
+            first_name = :firstname,
+            last_name = :lastname,
+            email = :email,
+            address_id = :address_id,
+            last_update = CURRENT_TIMESTAMP
+        WHERE customer_id = :customer_id
+    """)
+    try:
+        db.session.execute(query_city, {'city': city, 'country_id': country_id, 'city_id': city_id})
+        db.session.execute(query_address, {'address': address, 'address_id': address_id, 'address2': address2, 'district': district, 'zipcode': postal_code, 'phone': phone})
+        db.session.execute(query_customer, {'firstname': first_name, 'lastname': last_name, 'email': email, 'address_id': address_id, 'customer_id': customer_id})
+    except Exception as e:
+        print(e)
+        return {'message': 'Server error. Please try again later.'}, 500
+    else:
+        db.session.commit()
+        return {'message': f"Success. Customer {first_name} {last_name} updated (id: {customer_id})."}, 200
+
+@app.route("/createcustomer", methods=['POST'])
+def createcustomer():
+    if(request.json == None):
+        return 400
+    json = request.json
+    country_id = json.get('country_id')
+    city = json.get('city')
+    address = json.get('address')
+    address2 = json.get('address2')
+    district = json.get('district')
+    postal_code = json.get('postal_code')
+    phone = json.get('phone')
+    first_name = json.get('first_name').upper()
+    last_name = json.get('last_name').upper()
+    email = json.get('email')
+    customer_id = None
+    if(country_id == None or city == None or address == None or postal_code == None or first_name == None or last_name == None or email == None):
+        return {'message': 'Required inputs were not provided.'}, 400
+    query_city = text("""
+    INSERT INTO city (city_id, city, country_id, last_update)
+    VALUES (
+        (SELECT MAX(city_id) FROM city) + 1,
+        :city,
+        :country_id,
+        CURRENT_TIMESTAMP
+    );
+    """)
+
+    query_address = text("""INSERT INTO address (address_id, address, address2, district, city_id, postal_code, phone, last_update)
+    VALUES (
+        (SELECT MAX(address_id) FROM address) + 1,
+        :address,
+        :address2,
+        :district,
+        (SELECT city_id FROM city WHERE city = :city),
+        :zipcode,
+        :phone,
+        CURRENT_TIMESTAMP
+    );
+    """)
+
+    query_customer = text("""INSERT INTO customer (customer_id, store_id, first_name, last_name, email, address_id, active, create_date, last_update)
+    VALUES (
+        (SELECT MAX(customer_id) FROM customer) + 1,
+        1,
+        :firstname,
+        :lastname,
+        :email,
+        (SELECT address_id FROM address WHERE address = :address),
+        1,
+        CURRENT_TIMESTAMP,
+        CURRENT_TIMESTAMP
+    );
+    """)
+    try:
+        db.session.execute(query_city, {'city': city, 'country_id': country_id})
+        db.session.execute(query_address, {'address': address, 'address2': address2, 'district': district, 'city':city, 'zipcode': postal_code, 'phone': phone})
+        db.session.execute(query_customer, {'firstname': first_name, 'lastname': last_name, 'email': email, 'address': address})
+    except Exception as e:
+        print(e)
+        return {'message': 'Server error. Please try again later.'}, 500
+    else:
+        db.session.commit()
+        result = db.session.execute(text("SELECT MAX(customer_id) as latest_customer FROM customer"))
+        row = result.first()
+        customer_id = row.latest_customer
+        print(customer_id)
+        return {'message': f"Success. Customer {first_name} {last_name} added (id: {customer_id})."}, 200
+    
+
 @app.route("/rentfilm", methods=['POST'])
 def rentfilm():
     if(request.json == None):
@@ -92,7 +277,7 @@ def rentfilm():
     INSERT INTO rental (rental_id, rental_date, inventory_id, customer_id, return_date, staff_id, last_update)
     VALUES ( 
         (SELECT MAX(rental_id) FROM rental) + 1,
-        CURRENT_DATE,
+        CURRENT_TIMESTAMP,
         :iid,
         :cid,
         NULL,
@@ -115,9 +300,10 @@ def rentfilm():
     try:
         db.session.execute(query1, {'cid': customer_id, 'sid': staff_id, 'iid': inventory_id})
         db.session.execute(query2, {'cid': customer_id, 'sid': staff_id, 'iid': inventory_id})
-        db.session.commit()
     except:
         return Response(status=500)
+    else:
+        db.session.commit()
     finally:
         return {'message': 'Inventory ID ' + str(inventory_id) + ' successfully rented to Customer ID ' + str(customer_id)}
         
