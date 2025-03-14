@@ -111,13 +111,45 @@ def deletecustomer(customer_id):
         db.session.commit()
         return {'message': f"User successfully deleted (id: {customer_id})"}
 
+@app.route("/customerrentals/<int:customer_id>", methods=['GET'])
+def customerrentals(customer_id):
+    query = text("""
+        SELECT * FROM rental WHERE customer_id = :cid ORDER BY rental_id DESC
+    """)
+    result = db.session.execute(query, {'cid': customer_id})
+    json = {'rentals': []}
+    for row in result:
+        json['rentals'].append({
+            'rental_id': row.rental_id,
+            'rental_date': row.rental_date,
+            'inventory_id': row.inventory_id,
+            'customer_id': customer_id,
+            'return_date': row.return_date
+        })
+    return json
+
+@app.route("/returnfilm/<int:rental_id>", methods=['PATCH'])
+def returnfilm(rental_id):
+    if(rental_id == None):
+        return {'message': 'Rental ID not provided'}, 400
+    try:
+        db.session.execute(text("UPDATE rental SET return_date = CURRENT_TIMESTAMP WHERE rental_id = :rid"), {'rid': rental_id})
+    except Exception as e:
+        print(e)
+        return {'message': 'Server error.'}, 500
+    else:
+        db.session.commit()
+        return {'message': f"Successfully returned rental film (rental id: {rental_id})"}, 200
+    
+
 @app.route("/getcustomer/<int:customer_id>", methods=['GET'])
 def getcustomer(customer_id):
     query = text("""
-        SELECT C.customer_id, C.first_name, C.last_name, C.email, C.address_id, A.address, A.address2, A.district, A.city_id, A.postal_code, A.phone, CI.city, CI.country_id, C.create_date, C.last_update
+        SELECT C.customer_id, C.first_name, C.last_name, C.email, C.address_id, A.address, A.address2, A.district, A.city_id, A.postal_code, A.phone, CI.city, CI.country_id, C.create_date, C.last_update, CNTR.country
         FROM customer AS C
         INNER JOIN address AS A ON C.address_id = A.address_id
         INNER JOIN city AS CI ON A.city_id = CI.city_id
+        INNER JOIN country AS CNTR ON CNTR.country_id = CI.country_id
         WHERE C.customer_id = :cid
     """)
     result = db.session.execute(query, {'cid': customer_id})
@@ -137,6 +169,7 @@ def getcustomer(customer_id):
         'phone': row.phone,
         'country_id': row.country_id,
         'create_date': row.create_date,
+        'country': row.country,
         'last_update': row.last_update
     }
         
